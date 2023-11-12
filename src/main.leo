@@ -1,9 +1,116 @@
 import zk_bitwise_stack_v0_0_1.leo;
 
 program cards.aleo {
+    mapping games: address => Game;
+    inline getNewDeck() -> [[u8; 26]; 2] {
+        return [[1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8, 11u8, 12u8, 13u8, 14u8, 15u8, 16u8, 17u8, 18u8, 19u8, 20u8, 21u8, 22u8, 23u8, 24u8, 25u8, 26u8],
+                [27u8, 28u8, 29u8, 30u8, 31u8, 32u8, 33u8, 34u8, 35u8, 36u8, 37u8, 38u8, 39u8, 40u8, 41u8, 42u8, 43u8, 44u8, 45u8, 46u8, 47u8, 48u8, 49u8, 50u8, 51u8, 52u8]];
+    }
+    struct Game {
+        password_hash: u32,
+        players_joined: u8,
+        player1: address, // Max 5 players.
+        player2: address,
+        player3: address,
+        player4: address,
+        player5: address,
+        buy_in: u64,
+    }
 
-// Encryption -------------------------------------------------------------------
-function exp_by_squaring(base: u128, exp: u128, modulus: u128) -> u128 {
+    transition create_game(numPlayers: u8, password: u32) -> Game {
+        let newGame: Game = Game {
+            password_hash: SHA3_256::hash_to_u32(password),
+            players_joined: 1u8,
+            player1: self.caller,
+            player2: 0u128 as address,
+            player3: 0u128 as address,
+            player4: 0u128 as address,
+            player5: 0u128 as address,
+            buy_in: 100u64,
+        };
+        return then finalize(newGame, self.caller);
+    }
+    finalize create_game(game: Game, creator: address) {
+        Mapping::set(games, creator, game);
+    }
+
+    transition join_game(playerOne: address, password: u32, randomSeed: u32) {
+        let passwordHash: u32 = SHA3_256::hash_to_u32(password) as u32;
+        return then finalize(playerOne, passwordHash, self.caller);
+    }
+    finalize join_game(playerOne: address, passwordHash: u32, joiningPlayer: address) {
+        let game: Game = Mapping::get(games, playerOne);
+        assert(game.players_joined < 5u8); // Don't overflow array.
+        assert_eq(game.password_hash, passwordHash);
+        let playersJoined: u8 = game.players_joined + 1u8;
+        // Add new player to the list of players.
+        if game.player2 == 0u128 as address {
+            let newPlayer: address = joiningPlayer;
+            let newGame: Game = Game {
+                password_hash: passwordHash,
+                players_joined: playersJoined,
+                player1: playerOne,
+                player2: newPlayer,
+                player3: game.player3,
+                player4: game.player4,
+                player5: game.player5,
+                buy_in:  game.buy_in,
+            };   
+            Mapping::set(games, playerOne, newGame);
+            return;
+        }
+        if game.player3 == 0u128 as address {
+            let newPlayer: address = joiningPlayer;
+            let newGame: Game = Game {
+                password_hash: passwordHash,
+                players_joined: playersJoined,
+                player1: playerOne,
+                player2: game.player2,
+                player3: newPlayer,
+                player4: game.player4,
+                player5: game.player5,
+                buy_in:  game.buy_in,
+            };   
+            Mapping::set(games, playerOne, newGame);
+            return;
+        }
+        if game.player4 == 0u128 as address {
+            let newPlayer: address = joiningPlayer;
+            let newGame: Game = Game {
+                password_hash: passwordHash,
+                players_joined: playersJoined,
+                player1: playerOne,
+                player2: game.player2,
+                player3: game.player3,
+                player4: newPlayer,
+                player5: game.player5,
+                buy_in:  game.buy_in,
+            };   
+            Mapping::set(games, playerOne, newGame);
+            return;
+        }
+        if game.player5 == 0u128 as address {
+            let newPlayer: address = joiningPlayer;
+            let newGame: Game = Game {
+                password_hash: passwordHash,
+                players_joined: playersJoined,
+                player1: playerOne,
+                player2: game.player2,
+                player3: game.player3,
+                player4: game.player4,
+                player5: newPlayer,
+                buy_in:  game.buy_in,
+            };   
+            Mapping::set(games, playerOne, newGame);
+            return;
+        }
+    }
+    transition begin_game() {
+        
+    }
+
+    // Encryption -------------------------------------------------------------------
+    function exp_by_squaring(base: u128, exp: u128, modulus: u128) -> u128 {
         let result: u128 = 1u128;
         let current_base: u128 = base;
 
@@ -222,6 +329,8 @@ function exp_by_squaring(base: u128, exp: u128, modulus: u128) -> u128 {
       let p: u128 = exp_by_squaring(m1, d2, n);
       return (m1, p);
     }
+
+
 // Shuffling -------------------------------------------------------------------
     transition setup_shuffle(element: i8, deck: [[u128; 26]; 2]) -> (i8, [u128; 26], [u128; 26]) {
         let n: i8 = element.abs();
