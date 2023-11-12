@@ -2,10 +2,21 @@ import zk_bitwise_stack_v0_0_1.leo;
 
 program cards.aleo {
     mapping games: address => Game;
-    inline getNewDeck() -> [[u8; 26]; 2] {
-        return [[1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8, 11u8, 12u8, 13u8, 14u8, 15u8, 16u8, 17u8, 18u8, 19u8, 20u8, 21u8, 22u8, 23u8, 24u8, 25u8, 26u8],
-                [27u8, 28u8, 29u8, 30u8, 31u8, 32u8, 33u8, 34u8, 35u8, 36u8, 37u8, 38u8, 39u8, 40u8, 41u8, 42u8, 43u8, 44u8, 45u8, 46u8, 47u8, 48u8, 49u8, 50u8, 51u8, 52u8]];
+    record UnshuffledDeck {
+        owner: address;
+        deck: [[u128; 26]; 2];
+        num_players: u8;
+        player1: address;
+        player2: address;
+        player3: address;
+        player4: address;
+        player5: address;
     }
+    inline get_new_deck() -> [[u128; 26]; 2] {
+        return [[1u128, 2u128, 3u128, 4u128, 5u128, 6u128, 7u128, 8u128, 9u128, 10u128, 11u128, 12u128, 13u128, 14u128, 15u128, 16u128, 17u128, 18u128, 19u128, 20u128, 21u128, 22u128, 23u128, 24u128, 25u128, 26u128],
+                [27u128, 28u128, 29u128, 30u128, 31u128, 32u128, 33u128, 34u128, 35u128, 36u128, 37u128, 38u128, 39u128, 40u128, 41u128, 42u128, 43u128, 44u128, 45u128, 46u128, 47u128, 48u128, 49u128, 50u128, 51u128, 52u128]];
+    }
+
     struct Game {
         password_hash: u32,
         players_joined: u8,
@@ -15,6 +26,53 @@ program cards.aleo {
         player4: address,
         player5: address,
         buy_in: u64,
+        deck: [[u128; 26]; 2],
+    }
+    transition start_shuffle(game: Game, e: u128, n: u128) -> UnshuffledDeck {
+        let encryptedDeck: [[u128;26]; 2] = encrypt_deck(e, n, game.deck);
+//      let shuffledEncryptedDeck: [[u128; 26]; 2] = shuffle_deck(nn, member_size, encryptedDeck[0u8], encrtyptedDeck[1u8]);
+        let deck: UnshuffledDeck = UnshuffledDeck {
+        owner: game.player2,
+        deck: encryptedDeck,
+        num_players: game.players_joined,
+        player1: game.player1,
+        player2: game.player2,
+        player3: game.player3,
+        player4: game.player4,
+        player5: game.player5,
+        };
+        // Verify on chain that the initial deck is the same as the game deck.
+        return deck then finalize(game, self.caller);
+    }
+    finalize start_shuffle(game: Game, playerOne: address) {
+        let realGame: Game = Mapping::get(games, playerOne);
+        // Fail if the game was modified for the transition.
+        assert(game == realGame);
+    }
+    transition shuffle_and_pass(deck: UnshuffledDeck, e: u128, n: u128) -> UnshuffledDeck {
+        let encryptedDeck: [[u128;26]; 2] = encrypt_deck(e, n, deck.deck);
+        let newDeck: UnshuffledDeck = UnshuffledDeck {
+            owner: deck.player3,
+            deck: encryptedDeck,
+            num_players: deck.num_players,
+            player1: deck.player1,
+            player2: deck.player2,
+            player3: deck.player3,
+            player4: deck.player4,
+            player5: deck.player5,
+        };
+        return newDeck;
+    }
+    transition complete_the_shuffle(deck: UnshuffledDeck, playerOne: address) -> UnshuffledDeck {
+        // If the owner of the record is player1, everyone has shuffled.
+        assert_eq(deck.owner, deck.player1);
+        assert_eq(deck.owner, self.caller);
+        return then finalize(deck.deck, deck.player1);
+    }
+    finalize complete_the_shuffle(deck: [[u128; 26]; 2], playerOne: address) {
+        let game: Game = Mapping::get(games, playerOne);
+        // Update the deck
+        Mapping::set(games, playerOne, game);
     }
 
     transition create_game(numPlayers: u8, password: u32) -> Game {
@@ -27,6 +85,7 @@ program cards.aleo {
             player4: 0u128 as address,
             player5: 0u128 as address,
             buy_in: 100u64,
+            deck: get_new_deck(),
         };
         return then finalize(newGame, self.caller);
     }
@@ -55,6 +114,7 @@ program cards.aleo {
                 player4: game.player4,
                 player5: game.player5,
                 buy_in:  game.buy_in,
+                deck:    game.deck,
             };   
             Mapping::set(games, playerOne, newGame);
             return;
@@ -70,6 +130,7 @@ program cards.aleo {
                 player4: game.player4,
                 player5: game.player5,
                 buy_in:  game.buy_in,
+                deck:    game.deck,
             };   
             Mapping::set(games, playerOne, newGame);
             return;
@@ -85,6 +146,7 @@ program cards.aleo {
                 player4: newPlayer,
                 player5: game.player5,
                 buy_in:  game.buy_in,
+                deck:    game.deck,
             };   
             Mapping::set(games, playerOne, newGame);
             return;
@@ -100,6 +162,7 @@ program cards.aleo {
                 player4: game.player4,
                 player5: newPlayer,
                 buy_in:  game.buy_in,
+                deck:    game.deck,
             };   
             Mapping::set(games, playerOne, newGame);
             return;
@@ -110,7 +173,7 @@ program cards.aleo {
     }
 
     // Encryption -------------------------------------------------------------------
-    function exp_by_squaring(base: u128, exp: u128, modulus: u128) -> u128 {
+    inline exp_by_squaring(base: u128, exp: u128, modulus: u128) -> u128 {
         let result: u128 = 1u128;
         let current_base: u128 = base;
 
@@ -125,7 +188,7 @@ program cards.aleo {
         return result as u128;
     }
     
-    transition encrypt_deck(e: u128, n: u128, deck: [[u128; 26]; 2]) -> [[u128; 26]; 2] {
+    inline encrypt_deck(e: u128, n: u128, deck: [[u128; 26]; 2]) -> [[u128; 26]; 2] {
         let bottom_half: [u128; 26] = deck[0u8];
         let top_half: [u128; 26] = deck[1u8];
          let t0: u128 = exp_by_squaring(bottom_half[0u8], e, n);
@@ -332,7 +395,7 @@ program cards.aleo {
 
 
 // Shuffling -------------------------------------------------------------------
-    transition setup_shuffle(element: i8, deck: [[u128; 26]; 2]) -> (i8, [u128; 26], [u128; 26]) {
+    function setup_shuffle(element: i8, deck: [[u128; 26]; 2]) -> (i8, [u128; 26], [u128; 26]) {
         let n: i8 = element.abs();
         if (element < 0i8) {
             return (n, deck[0u8], deck[1u8]);
